@@ -1,0 +1,32 @@
+# --- PyTorch & PyG (Install according to your CUDA runtime) ---
+# For CUDA 12.1 support:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-2.1.2+cu121.html
+# pip install torch-geometric==2.6.1
+
+# --- Core Bioinformatics & Structural Biology ---
+biopython>=1.80
+biotite>=0.40.0
+
+# --- Deep Protein Language Models ---
+fair-esm>=2.0.0
+
+# --- Machine Learning & Feature Extraction ---
+pandas>=1.4.0
+numpy>=1.22.0
+scikit-learn>=1.0.0
+xgboost>=1.5.0
+scipy>=1.7.0
+statsmodels>=0.13.0
+
+# --- General Utilities ---
+PyYAML>=6.0
+requests>=2.28.0
+tqdm>=4.64.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Note: CD-HIT (required for sequence clustering split generation) must be installed 
+# separately via system packages or Conda:
+#   conda install -c bioconda cd-hit
+# Or build from source: https://github.com/weizhongli/cdhit
