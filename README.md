@@ -1,4 +1,5 @@
 #  Conformational B-Cell Epitope Prediction Pipeline
+[![DOI](https://zenodo.org/badge/1273753930.svg)](https://doi.org/10.5281/zenodo.20753198)
 
 
 
