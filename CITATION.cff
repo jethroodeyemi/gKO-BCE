@@ -1,0 +1,46 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper and the archived software (concept DOI)."
+title: "KO-BCE / gKO-BCE: structure-aware conformational B-cell epitope prediction"
+type: software
+authors:
+  - given-names: Jethro
+    family-names: Odeyemi
+  - given-names: Monika
+    family-names: Kashyap
+  - given-names: Heather L.
+    family-names: Wilson
+  - given-names: Zahed
+    family-names: Khatooni
+version: 1.1.0
+date-released: 2026-07-03
+license: MIT
+repository-code: "https://github.com/jethroodeyemi/gKO-BCE"
+url: "https://huggingface.co/jethroodeyemi/gKO-BCE"
+doi: 10.5281/zenodo.20753198
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.20753198
+    description: "Concept DOI (always resolves to the latest version)"
+  - type: doi
+    value: 10.5281/zenodo.21174318
+    description: "Version DOI for v1.1.0"
+keywords:
+  - B-cell epitope prediction
+  - glycosylation
+  - transformer
+  - protein structure
+  - ESM
+  - immunoinformatics
+preferred-citation:
+  type: article
+  title: "gKO-BCE: A Novel Deep Learning Approach to Predict B-Cell Epitopes, Even Within Glycosylated Antigens"
+  year: 2026
+  authors:
+    - given-names: Jethro
+      family-names: Odeyemi
+    - given-names: Monika
+      family-names: Kashyap
+    - given-names: Heather L.
+      family-names: Wilson
+    - given-names: Zahed
+      family-names: Khatooni
