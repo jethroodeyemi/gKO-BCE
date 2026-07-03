@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite the paper and the archived software (concept DOI)."
+message: "If you use this software, please cite the paper and the archived software."
 title: "KO-BCE / gKO-BCE: structure-aware conformational B-cell epitope prediction"
 type: software
 authors:
