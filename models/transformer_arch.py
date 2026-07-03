@@ -136,11 +136,14 @@ class MultiheadAttention(nn.Module):
         )
     
     def get_attention_mask(self, input_shape, device):
-        bs, _, seq_len = input_shape
+        # Causal mask over the feature-token axis. Returned as (1, seq_len, seq_len)
+        # and broadcast over the (batch * n_heads) dimension so memory stays O(seq_len^2)
+        # instead of O(batch * n_heads * seq_len^2). Values are identical either way.
+        _, _, seq_len = input_shape
         seq_ids = torch.arange(seq_len, device=device)
-        attention_mask = seq_ids[None, None, :].repeat(bs, seq_len, 1) <= seq_ids[None, :, None]
+        attention_mask = seq_ids[None, :] <= seq_ids[:, None]  # [i, j] True iff j <= i
         attention_mask = (1.0 - attention_mask.float()) * -1e4
-        return attention_mask
+        return attention_mask[None]  # (1, seq_len, seq_len)
 
     def forward(
         self,
@@ -157,12 +160,16 @@ class MultiheadAttention(nn.Module):
             v = value_compression(v.transpose(1, 2)).transpose(1, 2)
 
         batch_size = len(q)
+        # Compute the per-head key dim BEFORE reshaping (k.shape[-1] is still d here).
+        # Reshaping first would make k.shape[-1] == d_head, and d_head // n_heads == 0,
+        # producing sqrt(0) -> division by zero -> NaN.
+        d_head_key = k.shape[-1] // self.n_heads
         d_head_value = v.shape[-1] // self.n_heads
         n_q_tokens = q.shape[1]
 
         q = self._reshape(q)
         k = self._reshape(k)
-        attention_scores = q @ k.transpose(1, 2) / math.sqrt(k.shape[-1] // self.n_heads)
+        attention_scores = q @ k.transpose(1, 2) / math.sqrt(d_head_key)
         
         masks = self.get_attention_mask(attention_scores.shape, attention_scores.device)
         attention = F.softmax(attention_scores + masks, dim=-1)

@@ -1,132 +1,187 @@
-#  Conformational B-Cell Epitope Prediction Pipeline
-[![DOI](https://zenodo.org/badge/1273753930.svg)](https://doi.org/10.5281/zenodo.20753198)
+# KO-BCE / gKO-BCE
 
+**Structure-aware conformational B-cell epitope (BCE) prediction, robust to glycan shielding.**
 
+This repository accompanies the paper *"gKO-BCE: A Novel Deep Learning Approach to
+Predict B-Cell Epitopes, Even Within Glycosylated Antigens."* It provides the full,
+reproducible pipeline — data preprocessing, feature extraction, model training, and
+inference — for two models that share one transformer architecture:
+
+| Model | Glycosylation feature | Independent test set (970 proteins) |
+|-------|:---------------------:|:-----------------------------------:|
+| **KO-BCE**  | ✗ | AUC-ROC 0.788 |
+| **gKO-BCE** | ✓ (glycosylation-proximity) | **AUC-ROC 0.846, AUC-PR 0.217** |
+
+The `g` in gKO-BCE denotes the geometric **glycosylation-proximity feature** that lets
+the model down-weight glycan-shielded surface and recover true epitopes on heavily
+glycosylated antigens (e.g. the SARS-CoV-2 spike).
+
+> **Naming note.** In the code the transformer class is called `EpitopeTransformer`
+> (in `models/transformer_arch.py`). It is the *same* network the paper refers to as
+> **KO-BCE / gKO-BCE**; the two models differ only in the input feature set.
+
+---
+
+## Repository layout
 
 ```text
 BCE_Pred_Streamlined/
+├── README.md
+├── LICENSE
+├── requirements.txt
+├── config.py                    # Central config: paths, feature params, weights registry (HF URLs)
+├── run_pipeline.py              # End-to-end training/preprocessing orchestrator
 │
-├── README.md                     
-├── requirements.txt              # Python dependencies
-├── config.py                     # Centralized pipeline configurations and paths
-├── run_pipeline.py               # Training and split orchestrator
+├── data/
+│   ├── dataset.tsv              # Deduplicated antibody–antigen index (pdb, Hchain, Lchain, antigen_chain, …)
+│   ├── processed/               # Homology-aware split JSONs (split_clean.json = paper's main split)
+│   └── example_pdbs/            # Small antigen-only structures for a quick inference demo
 │
-├── preprocessing/                # Data cleaning, feature extraction, and splitting
-│   ├── __init__.py
-│   ├── structure_cleaning.py     # Isolates H, L, and Antigen chains
-│   ├── sequence_clustering.py    # CD-HIT FASTA parser & homology split generator
-│   ├── glycosylation.py          # Queries RCSB/UniProt for glycosylation sites
-│   ├── esm_embedding.py          # Inferences ESM-2, ESM-1v, and ESM-IF1 models
-│   ├── feature_extractor.py      
-│   └── dataset_normalizer.py    
+├── preprocessing/
+│   ├── structure_cleaning.py    # Isolates H, L, and antigen chains
+│   ├── sequence_clustering.py   # CD-HIT clustering → homology-aware splits
+│   ├── glycosylation.py         # RCSB GraphQL + UniProt lookup of glycosylation sites
+│   ├── esm_embedding.py         # ESM-2 / ESM-1v / ESM-IF1 embeddings
+│   ├── feature_extractor.py     # Assembles per-residue feature matrices
+│   └── dataset_normalizer.py    # QuantileTransformer normalization + train/val/test packaging
 │
-├── models/                       # Deep learning network architectures
-│   ├── __init__.py
-│   └── transformer_arch.py      
+├── models/
+│   ├── transformer_arch.py      # EpitopeTransformer (KO-BCE / gKO-BCE architecture)
+│   └── pca_models/              # Fitted ESM-2/ESM-1v PCA reducers (1280→256), shipped
 │
-├── training/                     # Model fitting and cross-validation scripts
-│   ├── __init__.py
-│   ├── train_xgboost.py          # Trains XGBoost with CV & feature importance
-│   └── train_transformer.py      # Optimizes EpitopeTransformer with Mixup
+├── training/
+│   └── train_transformer.py     # Trains with hidden mixup, warmup+cosine, early stopping on val AUC-ROC
 │
-└── inference/                    # Model evaluation & deployment utilities
-    ├── __init__.py
-    ├── xgboost_inference.py      
-    ├── transformer_inference.py  
-    └── main.py                   
+└── inference/
+    ├── main.py                  # CLI: predict epitopes on your PDBs (auto-downloads weights)
+    ├── transformer_inference.py # Loads checkpoint + quantile normalizer, runs the model
+    └── weights.py               # Fetches released weights from the Hugging Face Hub
 ```
 
 ---
 
-## Requirements and Installation
-
-### 1. Python Environment
-
-We recommend Python 3.8 to 3.11 with a virtual environment manager:
+## Installation
 
 ```bash
-conda create -n bce-pred python=3.9 -y
-conda activate bce-pred
-```
+conda create -n gko-bce python=3.10 -y
+conda activate gko-bce
 
-### 2. PyTorch & CUDA Support
-
-For CUDA 12.1 runtime, execute:
-
-```bash
+# PyTorch (pick the build matching your CUDA runtime)
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-```
 
-### 3. Core Dependencies
+# ESM-IF1 (inverse folding) needs PyTorch Geometric + scatter
+pip install torch-scatter -f https://data.pyg.org/whl/torch-2.1.2+cu121.html
+pip install torch-geometric
 
-
-```bash
 pip install -r requirements.txt
-```
 
-### 4. Sequence Clustering Tools (CD-HIT)
-
-CD-HIT is required to compute homology-aware splits.
-
-```bash
+# Only needed to regenerate homology-aware splits during training:
 conda install -c bioconda cd-hit -y
 ```
 
 ---
 
-## Running the Pipeline
+## Quick start — inference
 
-### 1. Preparation
-
-To begin, ensure your input dataset file is specified at `data/dataset.tsv` and raw PDB complex files are present in `data/pdb_files/`.
-The input TSV should contain the following tab-separated columns:
-- `pdb`: The 4-character PDB complex ID (e.g., `1a14`).
-- `Hchain`: Heavy antibody chain ID.
-- `Lchain`: Light antibody chain ID.
-- `antigen_chain`: Target antigen chain ID.
-
-### 2. Execution
-
-Run the training and split pipeline by executing:
+Run the flagship **gKO-BCE** model on the bundled example antigens. The weights
+(~20 MB) download automatically from the Hugging Face Hub on first use and are cached
+under `models/weights/`:
 
 ```bash
-python run_pipeline.py --input_tsv data/dataset.tsv --pdb_dir data/pdb_files
+python inference/main.py --model gko-bce
 ```
 
-To incorporate glycosylation mapping features:
+Predict on your own structures (antigen-only PDBs, or antibody–antigen complexes with
+`--antigen_chain`):
 
 ```bash
-python run_pipeline.py --use_ptms
+# gKO-BCE (glycosylation-aware; looks up glyco sites for the PDB ID via RCSB/UniProt)
+python inference/main.py --model gko-bce --input_pdb_dir path/to/pdbs --output_dir results/
+
+# KO-BCE (no glycosylation feature, no network lookup)
+python inference/main.py --model ko-bce  --input_pdb_dir path/to/pdbs --antigen_chain A
 ```
 
-To skip the feature extraction stages and re-run only the ML training:
+Key options: `--model {ko-bce,gko-bce}`, `--input_pdb_dir DIR`, `--antigen_chain ID`
+(default: auto-detect the longest protein chain), `--threshold FLOAT` (default 0.4),
+`--output_dir DIR`.
 
-```bash
-python run_pipeline.py --skip_preprocessing
-```
+> **gKO-BCE requires network access** to look up glycosylation sites for each input
+> (RCSB PDB GraphQL + UniProt REST), keyed by the PDB-ID filename. For structures with
+> no PDB entry (e.g. AlphaFold models) the glyco feature defaults to "no nearby glycan";
+> use `--model ko-bce` if you don't need it.
+
+### Output
+
+One CSV per structure (`<PDB_ID>_<model>_predictions.csv`), sorted by descending
+probability:
+
+| pdb_id | chain | res_id | residue | rsa | b_factor | length | probability | prediction |
+|--------|-------|--------|---------|-----|----------|--------|-------------|------------|
+| 1a14 | N | 368 | SER | 0.72 | 24.3 | 390 | 0.94 | 1 |
+| 1a14 | N | 329 | ASP | 0.68 | 18.5 | 390 | 0.88 | 1 |
 
 ---
 
-## Running Inference on Custom Proteins
+## Training from scratch
 
-### 1. Run with EpitopeTransformer
-
-```bash
-python inference/main.py --model transformer --input_pdb_dir path/to/pdb_folder --output_dir results_dir
-```
-
-### 2. Run with XGBoost
+Training reproduces the paper's pipeline: ESM-2/ESM-1v/ESM-IF1 embeddings + biophysical
+(RSA, B-factor) + optional glycosylation-proximity features → QuantileTransformer
+normalization → transformer with hidden mixup, 10-epoch warmup + cosine schedule, and
+early stopping on validation AUC-ROC.
 
 ```bash
-python inference/main.py --model xgboost --input_pdb_dir path/to/pdb_folder --output_dir results_dir
+# gKO-BCE (with the glycosylation feature); drop --use_ptms for KO-BCE
+python run_pipeline.py --input_tsv data/dataset.tsv --pdb_dir data/pdb_files --use_ptms
+
+# Re-run only the training stage on already-processed features:
+python run_pipeline.py --skip_preprocessing --use_ptms
 ```
 
-### Output Format
+You supply `data/pdb_files/` (raw antibody–antigen complexes; re-downloadable from RCSB
+by PDB ID). The pipeline cleans structures, builds CD-HIT (40% identity) homology-aware
+splits, extracts features, and trains. Fitted PCA reducers are shipped in
+`models/pca_models/`; regenerate them only if you change the embedding set.
 
-For each PDB structure evaluated, a CSV file named `<PDB_ID>_bce_predictions.csv` will be generated. The spreadsheet contains per-residue prediction probabilities and is sorted descending by score:
+---
 
-| pdb_id | chain | res_id | residue | rsa | b_factor | probability | prediction |
-|---|---|---|---|---|---|---|---|
-| 1a14 | A | 142 | ASN | 0.8124 | 24.32 | 0.9412 | 1 |
-| 1a14 | A | 88  | LYS | 0.7410 | 18.55 | 0.8950 | 1 |
-| 1a14 | A | 12  | VAL | 0.1235 | 12.10 | 0.0420 | 0 |
+## Model weights
+
+The released **KO-BCE** and **gKO-BCE** checkpoints are hosted on the Hugging Face Hub
+and pulled automatically by the inference code:
+
+- **Hub:** [`jethroodeyemi/gKO-BCE`](https://huggingface.co/jethroodeyemi/gKO-BCE)
+
+Each checkpoint bundles `best_model.pt`, the fitted `normalizer_quantile.pkl`,
+`results.json`, and `info.json`. The hosting is URL-based and host-agnostic: point
+`HF_REPO_ID` / `WEIGHTS_BASE_URL` in `config.py` at any static host (Hugging Face,
+Zenodo, a GitHub Release) that serves the same `ko-bce/…` and `gko-bce/…` layout.
+
+---
+
+## Data availability
+
+Structures and annotations are derived from the **Structural Antibody Database
+(SAbDab)** and the **RCSB Protein Data Bank**. Epitope residues are antigen residues
+within **6 Å** of the antibody. Homology-aware train/val/test splits were built by
+**CD-HIT at 40% sequence identity** (cluster-level split; `data/processed/split_clean.json`
+is the paper's main split: 3,047 / 350 / 970 proteins). `data/dataset.tsv` lists the
+antibody–antigen complexes and chains. Raw PDB files are not redistributed here; they
+are re-downloadable from RCSB by the PDB IDs in `dataset.tsv`.
+
+---
+
+## Citation
+
+```bibtex
+@article{odeyemi_gkobce,
+  title   = {gKO-BCE: A Novel Deep Learning Approach to Predict B-Cell Epitopes,
+             Even Within Glycosylated Antigens},
+  author  = {Odeyemi, Jethro and Kashyap, Monika and Wilson, Heather L. and Khatooni, Zahed},
+  year    = {2026}
+}
+```
+
+## License
+
+Released under the [MIT License](LICENSE).

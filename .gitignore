@@ -1,0 +1,39 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# --- Large data artifacts (regenerate or download; never commit) ---
+data/pdb_files/
+data/cleaned_pdb_files/
+data/antigen_only_pdb_files/
+data/embedding_cache/
+data/datastore/
+data/processed/*.pkl
+data/processed/inference_antigen_only/
+data/processed/protein_clusters*
+data/processed/all_antigen_sequences.fasta
+*.npy
+
+# --- Downloaded / staged model weights ---
+# auto-downloaded released checkpoints (cached)
+models/weights/
+# locally re-trained checkpoints
+models/transformer/
+# staging dir for Hugging Face upload
+release_weights/
+
+# --- Predictions & scratch ---
+predictions/
+
+# --- Manuscript (don't publish the PDF with the code) ---
+*.pdf
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+
+# NOTE: models/pca_models/*.pkl ARE committed (small, required for inference).
